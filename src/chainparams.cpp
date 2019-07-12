@@ -137,7 +137,7 @@ public:
         consensus.zawyLWMAHeight = 100; // blockheight to switch to LWMA retarget rules
         consensus.powLimitLegacy = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
 
-        consensus.nPowTargetSpacing = 1 * 30;
+        consensus.nPowTargetSpacing = 10;
 		consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1916; // 95% of 2016
