@@ -227,7 +227,7 @@ public:
 
         vSeeds.emplace_back("54.39.201.117", true);
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,55); // changed 60 to 55
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,53); // changed 60 to 55
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,122); // changed 122 to 123
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x08, 0x77, 0xA1, 0x2A}; // was {0x04, 0x88, 0xB2, 0x1E}
