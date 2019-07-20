@@ -1,3 +1,0 @@
-qt/qt_libnyc3qt_a-qrc_nyc3.o: qt/qrc_nyc3.cpp /usr/include/stdc-predef.h
-
-/usr/include/stdc-predef.h:
