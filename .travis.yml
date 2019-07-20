@@ -1,0 +1,82 @@
+sudo: required
+dist: trusty
+os: linux
+language: minimal
+cache:
+  directories:
+  - depends/built
+  - depends/sdk-sources
+  - $HOME/.ccache
+git:
+  depth: false  # full clone for git subtree check, this works around issue #12388
+env:
+  global:
+    - MAKEJOBS=-j3
+    - BOOST_TEST_RANDOM=1$TRAVIS_BUILD_ID
+    - CCACHE_SIZE=100M
+    - CCACHE_TEMPDIR=/tmp/.ccache-temp
+    - CCACHE_COMPRESS=1
+    - BASE_OUTDIR=$TRAVIS_BUILD_DIR/out
+    - SDK_URL=https://bitcoincore.org/depends-sources/sdks
+    - WINEDEBUG=fixme-all
+  matrix:
+# ARM
+    - HOST=arm-linux-gnueabihf PACKAGES="g++-arm-linux-gnueabihf python3-pip" DEP_OPTS="" GOAL="install" BITCOIN_CONFIG="--enable-glibc-back-compat --enable-reduce-exports --disable-tests"
+# Win32
+    - HOST=i686-w64-mingw32 DPKG_ADD_ARCH="i386" DEP_OPTS="" PACKAGES="python3 nsis g++-mingw-w64-i686 wine1.6" GOAL="install" BITCOIN_CONFIG="--enable-reduce-exports --disable-tests"
+# 32-bit + dash
+    - HOST=i686-pc-linux-gnu PACKAGES="g++-multilib python3-zmq" DEP_OPTS="" GOAL="install" BITCOIN_CONFIG="--enable-zmq --enable-glibc-back-compat --enable-reduce-exports LDFLAGS=-static-libstdc++ --disable-tests" USE_SHELL="/bin/dash"
+# Win64
+    - HOST=x86_64-w64-mingw32 DPKG_ADD_ARCH="i386" DEP_OPTS="" PACKAGES="python3 nsis g++-mingw-w64-x86-64 wine1.6" GOAL="install" BITCOIN_CONFIG="--enable-reduce-exports --disable-tests"
+# x86_64 Linux (uses qt5 dev package instead of depends Qt to speed up build and avoid timeout)
+    - HOST=x86_64-unknown-linux-gnu PACKAGES="python3-zmq qtbase5-dev qttools5-dev-tools protobuf-compiler libdbus-1-dev libharfbuzz-dev" DEP_OPTS=" NO_UPNP=1 DEBUG=1 ALLOW_HOST_PACKAGES=1" GOAL="install" BITCOIN_CONFIG="--enable-zmq --with-gui=qt5 --enable-glibc-back-compat --enable-reduce-exports CPPFLAGS=-DDEBUG_LOCKORDER --disable-tests"
+# x86_64 Linux, No wallet
+    - HOST=x86_64-unknown-linux-gnu PACKAGES="python3" DEP_OPTS="" GOAL="install" BITCOIN_CONFIG="--enable-glibc-back-compat --enable-reduce-exports --disable-tests"
+# Cross-Mac
+    - HOST=x86_64-apple-darwin11 PACKAGES="cmake imagemagick libcap-dev librsvg2-bin libz-dev libbz2-dev libtiff-tools python-dev" BITCOIN_CONFIG="--enable-gui --enable-reduce-exports --enable-werror" OSX_SDK=10.11 GOAL="deploy"
+before_install:
+    - export PATH=$(echo $PATH | tr ':' "\n" | sed '/\/opt\/python/d' | tr "\n" ":" | sed "s|::|:|g")
+install:
+    - if [ -n "$DPKG_ADD_ARCH" ]; then sudo dpkg --add-architecture "$DPKG_ADD_ARCH" ; fi
+    - if [ -n "$PACKAGES" ]; then travis_retry sudo apt-get update; fi
+    - if [ -n "$PACKAGES" ]; then travis_retry sudo apt-get install --no-install-recommends --no-upgrade -qq $PACKAGES; fi
+before_script:
+    - unset CC; unset CXX
+    - mkdir -p depends/SDKs depends/sdk-sources
+    - if [ -n "$OSX_SDK" -a ! -f depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz ]; then curl --location --fail $SDK_URL/MacOSX${OSX_SDK}.sdk.tar.gz -o depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz; fi
+    - if [ -n "$OSX_SDK" -a -f depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz ]; then tar -C depends/SDKs -xf depends/sdk-sources/MacOSX${OSX_SDK}.sdk.tar.gz; fi
+    - if [ -z "$NO_DEPENDS" ]; then make $MAKEJOBS -C depends HOST=$HOST $DEP_OPTS; fi
+    - if [ -n "$OSX_SDK" ]; then mkdir -p out; fi
+    - if [ -n "$OSX_SDK" ]; then mkdir -p out/$TRAVIS_PULL_REQUEST; fi
+    - if [ -n "$OSX_SDK" ]; then mkdir -p out/$TRAVIS_PULL_REQUEST/$TRAVIS_JOB_NUMBER-$HOST; fi
+    - if [ -n "$OSX_SDK" ]; then mkdir -p ${OUTDIR}/bin; fi
+script:
+    - export TRAVIS_COMMIT_LOG=`git log --format=fuller -1`
+    - if [ -n "$USE_SHELL" ]; then export CONFIG_SHELL="$USE_SHELL"; fi
+    - OUTDIR=$BASE_OUTDIR/$TRAVIS_PULL_REQUEST/$TRAVIS_JOB_NUMBER-$HOST
+    - BITCOIN_CONFIG_ALL="--disable-dependency-tracking --prefix=$TRAVIS_BUILD_DIR/depends/$HOST --bindir=$OUTDIR/bin --libdir=$OUTDIR/lib"
+    - if [ -z "$NO_DEPENDS" ]; then depends/$HOST/native/bin/ccache --max-size=$CCACHE_SIZE; fi
+    - test -n "$USE_SHELL" && eval '"$USE_SHELL" -c "./autogen.sh"' || ./autogen.sh
+    - mkdir build && cd build
+    - ../configure --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( cat config.log && false)
+    - make distdir VERSION=$HOST
+    - cd nyc3-$HOST
+    - ./configure --cache-file=../config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( cat config.log && false)
+    - make $MAKEJOBS $GOAL || ( echo "Build failure. Verbose build follows." && make $GOAL V=1 ; false )
+    - export LD_LIBRARY_PATH=$TRAVIS_BUILD_DIR/depends/$HOST/lib
+    - if [ -n "$OSX_SDK" ]; then ls -la; fi
+    - if [ -n "$OSX_SDK" ]; then cp -rf Nyc3-Core.dmg ${OUTDIR}; fi
+    - if [ -n "$OSX_SDK" ]; then cp -rf Nyc3-Qt.app ${OUTDIR}; fi
+after_script:
+    - echo $TRAVIS_COMMIT_RANGE
+    - echo $TRAVIS_COMMIT_LOG
+before_deploy: cd ${OUTDIR}/../ && tar -zcvf nyc3-$HOST.tar.gz ${OUTDIR}
+deploy:
+  skip_cleanup: true
+  provider: releases
+  api_key:
+    secure: nJJxwJpPEO2Jg/wlvl4LDAro8r9C1wg5WrQLxGSgmbq+xcOLUTjfXZHXkYFF+mZIx43hZ1WjLHuVLGZjm92j00vLEaTsBWiw3cwUmaZA4C9UqtxF3FW2b0zqmCfh+bHlf0XWzEp65kLkWKLW+yuPQIQuxbq39J58CXU6r5vVY4empaYkMICFuTUfh2+6PaqdV7gIZrX2ZysvZg1cMCSWH/8gqm6nJ5Jm+rvAGkqy2KGe1OAe9y5REtwc+IbeVs58OA8bqlmuFNe4RPjUUgxWOyx85YfCdLSZeikoiI1X/9nD+4teh3nb2tJXNb0bFMFxeZwqUIH4cwlCHyAH8or2/jsSNPtTWY4W3yQRF/6XVNfTRCg98dcrHV3OGT3T+BvpxYzNSo18oV0oPnUBsAqE4hrhJf52ZXdBO4d7wcAnAUYKanxP7S1nXPO2wEfDVUeaRPx77nFh9l2WxZfbLf5jqcgyqvzfVXJ6JlfEUbooZXLV8aKiGxahJVIIPWhVLg0xbAbS+KStxO3W1GmTrz6OoveGxb5NkqsXoWm//lWAzn/d1N8cL/StIAHW7PR0B0Of4YCDHh0QeaE14M/zVVLgxfgHdN7ByGeZ+Go/+ySk8dzD/jXD4oDtasrXx+7m6Uc4kC0ajXDsusiOX2iSQ7JQYaBIoYFcUs6WBj/9pniK/ik=
+  file: ${OUTDIR}/../nyc3-$HOST.tar.gz
+  on:
+    repo: ahmedbodi/nyc3
+
