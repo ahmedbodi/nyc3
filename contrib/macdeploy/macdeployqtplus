@@ -87,8 +87,6 @@ class FrameworkInfo(object):
     
     @classmethod
     def fromOtoolLibraryLine(cls, line):
-        print("DEBUG FOR OTOOL DEPLOY: " + line)
-
         # Note: line must be trimmed
         if line == "":
             return None
@@ -118,8 +116,6 @@ class FrameworkInfo(object):
             info.binaryPath = path
             info.version = "-"
             
-            print("DEBUG FOR DYLIB DEPLOY: " + path)
-
             info.installName = path
             info.deployedInstallName = "@executable_path/../Frameworks/" + info.binaryName
             info.sourceFilePath = path
@@ -204,7 +200,7 @@ class DeploymentInfo(object):
         return False
 
 def getFrameworks(binaryPath, verbose):
-    if verbose >= 2:
+    if verbose >= 3:
         print("Inspecting with otool: " + binaryPath)
     otoolbin=os.getenv("OTOOL", "otool")
     otool = subprocess.Popen([otoolbin, "-L", binaryPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -214,8 +210,6 @@ def getFrameworks(binaryPath, verbose):
             sys.stderr.write(o_stderr)
             sys.stderr.flush()
             raise RuntimeError("otool failed with return code %d" % otool.returncode)
-
-    print("OUT: " + o_stdout.decode())
 
     otoolLines = o_stdout.decode().split("\n")
     otoolLines.pop(0) # First line is the inspected binary
@@ -227,7 +221,7 @@ def getFrameworks(binaryPath, verbose):
         line = line.replace("@loader_path", os.path.dirname(binaryPath))
         info = FrameworkInfo.fromOtoolLibraryLine(line.strip())
         if info is not None:
-            if verbose >= 2:
+            if verbose >= 3:
                 print("Found framework:")
                 print(info)
             libraries.append(info)
@@ -491,7 +485,7 @@ to the codesign tool.
 E.g. CODESIGNARGS='--sign "Developer ID Application: ..." --keychain /encrypted/foo.keychain'""")
 
 ap.add_argument("app_bundle", nargs=1, metavar="app-bundle", help="application bundle to be deployed")
-ap.add_argument("-verbose", type=int, nargs=1, default=[3], metavar="<0-3>", help="0 = no output, 1 = error/warning (default), 2 = normal, 3 = debug")
+ap.add_argument("-verbose", type=int, nargs=1, default=[1], metavar="<0-3>", help="0 = no output, 1 = error/warning (default), 2 = normal, 3 = debug")
 ap.add_argument("-no-plugins", dest="plugins", action="store_false", default=True, help="skip plugin deployment")
 ap.add_argument("-no-strip", dest="strip", action="store_false", default=True, help="don't run 'strip' on the binaries")
 ap.add_argument("-sign", dest="sign", action="store_true", default=False, help="sign .app bundle with codesign tool")
